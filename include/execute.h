@@ -1,56 +1,48 @@
 #pragma once
 
 #include "command.h"
+#include "commander.h"
 #include "observer.h"
-#include "read.h"
 
+#include <atomic>
+#include <condition_variable>
 #include <memory>
-/**
- * @file execute.h 
- * 
- */
-class Executer : public IPublisher<std::vector<Command>>, public std::enable_shared_from_this<Executer>
-{
+#include <mutex>
+#include <string>
+#include <thread>
+
+class Executer : public IPublisher<Command>,
+                 public std::enable_shared_from_this<Executer> {
 
 private:
-  std::ostream &output_stream;
-  std::weak_ptr<Reader> reade_ptr;
+  void *m_context;
 
-private:
-  Executer(std::ostream &m_output_stream)
-      : output_stream(m_output_stream)
-  {
-  }
-  void setup(std::shared_ptr<Reader> &m_reader_ptr)
-  {
-    reade_ptr = m_reader_ptr;
-    auto reade_ptr_shared = reade_ptr.lock();
-    if (reade_ptr_shared)
-    {
-      reade_ptr_shared->subscribe(shared_from_this());
-    }
-  }
+  std::ostream &m_osOut;
+  std::ostream &m_stream_out;
+  std::weak_ptr<Commander> m_command_ptr;
+
+  std::atomic<bool> m_is_done;
+  std::thread m_thread;
+  std::mutex m_mutex_queue;
+  std::mutex m_mutex_print_line;
+  std::condition_variable m_condition_queue;
+  std::queue<Command> m_queue_of_commands;
 
 public:
+  static std::shared_ptr<Executer> create(const std::string &a_cmd_name,
+                                          std::shared_ptr<Commander> &,
+                                          std::ostream & = std::cout,
+                                          std::ostream & = std::cout);
+  ~Executer();
 
-  static std::shared_ptr<Executer> create(std::shared_ptr<Reader> &m_reader_ptr, std::ostream &m_output_stream = std::cout)
-  {
-    auto ptr = std::shared_ptr<Executer>{new Executer{m_output_stream}};
-    ptr->setup(m_reader_ptr);
-    return ptr;
-  }
+  void update(const Command &) override;
 
-  void update(const std::vector<Command> &a_Commands) override
-  {
-    output_stream << "bulk: ";
-    for (auto command_it = a_Commands.begin(); command_it != a_Commands.cend(); ++command_it)
-    {
-      if (command_it != a_Commands.begin())
-      {
-        output_stream << ", ";
-      }
-      output_stream << command_it->get_name();
-    }
-    output_stream << std::endl;
-  }
+  void setup_context(void *);
+
+private:
+  Executer(const std::string &, std::ostream &, std::ostream &);
+  void set_commander_ptr(std::shared_ptr<Commander> &);
+
+  void procces(std::string);
+  void join_t();
 };
